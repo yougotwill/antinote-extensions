@@ -21,6 +21,80 @@
 //
 // This extension has no commands - it only provides a service
 
+// OpenCode Go serves one key across three APIs. The model id picks the URL.
+// https://opencode.ai/docs/go/
+const OPENCODE_GO_CHAT = "https://opencode.ai/zen/go/v1/chat/completions";
+const OPENCODE_GO_MESSAGES = "https://opencode.ai/zen/go/v1/messages";
+const OPENCODE_GO_RESPONSES = "https://opencode.ai/zen/go/v1/responses";
+const OPENCODE_GO_USER_AGENT = "@antinote/ai_providers/1.3.0";
+
+// Available models can be found at https://opencode.ai/docs/go/#endpoints.
+// Chat-completions models. Anything not listed in the other two maps uses
+// this endpoint, including models the live catalog adds later.
+const OPENCODE_GO_MODELS = [
+    "glm-5.3-flash",
+    "glm-5.3",
+    "glm-5.2",
+    "kimi-k3",
+    "kimi-k2.7-code",
+    "kimi-k2.6",
+    "longcat-2.0",
+    "longcat-2.5-preview-free",
+    "step-5-preview-free",
+    "deepseek-v4.1-flash",
+    "deepseek-v4-pro",
+    "deepseek-v4-flash",
+    "deepseek-v4-flash-vision-exp",
+    "mimo-v2.6-flash",
+    "mimo-v2.6-pro",
+    "mimo-v2.5",
+    "mimo-v2.5-pro",
+    "hy4-preview",
+    "hy3",
+    "space-bunny",
+    "claude-haiku-5-5",
+    "minimax-m3",
+    "minimax-m2.7",
+    "qwen3.8-max",
+    "qwen3.8-flash",
+    "qwen3.7-plus",
+    "grok-4.7",
+    "grok-4.6",
+    "gpt-6-luna",
+    "gpt-5.6-luna",
+    "muse-spark-1.3-contributor",
+    "muse-spark-1.2-contributor"
+];
+
+const OPENCODE_GO_MESSAGE_MODELS = {
+    "claude-haiku-5-5": true,
+    "minimax-m3": true,
+    "minimax-m2.7": true,
+    "qwen3.8-max": true,
+    "qwen3.8-flash": true,
+    "qwen3.7-plus": true
+};
+
+const OPENCODE_GO_RESPONSE_MODELS = {
+    "grok-4.7": true,
+    "grok-4.6": true,
+    "gpt-6-luna": true,
+    "gpt-5.6-luna": true,
+    "muse-spark-1.3-contributor": true,
+    "muse-spark-1.2-contributor": true
+};
+
+const opencodeGoFormat = (model) => {
+    const id = (model || "").toLowerCase();
+    if (OPENCODE_GO_RESPONSE_MODELS[id]) {
+        return "responses";
+    }
+    if (OPENCODE_GO_MESSAGE_MODELS[id]) {
+        return "anthropic";
+    }
+    return "openai";
+};
+
 (function () {
     const extensionName = "ai_providers";
 
@@ -30,100 +104,16 @@
     // back empty. Only Anthropic needs a number, because its API requires one.
     const ANTHROPIC_MAX_TOKENS = 8192;
 
-    // OpenCode Go serves one key across three APIs. The model id picks the URL.
-    // https://opencode.ai/docs/go/
-    const OPENCODE_GO_CHAT = "https://opencode.ai/zen/go/v1/chat/completions";
-    const OPENCODE_GO_MESSAGES = "https://opencode.ai/zen/go/v1/messages";
-    const OPENCODE_GO_RESPONSES = "https://opencode.ai/zen/go/v1/responses";
-    const OPENCODE_GO_USER_AGENT = "antinote/1.3.0";
-
-    // Chat-completions models. Anything not listed in the other two maps uses
-    // this endpoint, including models the live catalog adds later.
-    const OPENCODE_GO_MODELS = [
-        "glm-5.3-flash",
-        "glm-5.3",
-        "glm-5.2",
-        "kimi-k3",
-        "kimi-k2.7-code",
-        "kimi-k2.6",
-        "longcat-2.0",
-        "longcat-2.5-preview-free",
-        "step-5-preview-free",
-        "deepseek-v4.1-flash",
-        "deepseek-v4-pro",
-        "deepseek-v4-flash",
-        "deepseek-v4-flash-vision-exp",
-        "mimo-v2.6-flash",
-        "mimo-v2.6-pro",
-        "mimo-v2.5",
-        "mimo-v2.5-pro",
-        "hy4-preview",
-        "hy3",
-        "space-bunny",
-        "claude-haiku-5-5",
-        "minimax-m3",
-        "minimax-m2.7",
-        "qwen3.8-max",
-        "qwen3.8-flash",
-        "qwen3.7-plus",
-        "grok-4.7",
-        "grok-4.6",
-        "gpt-6-luna",
-        "gpt-5.6-luna",
-        "muse-spark-1.3-contributor",
-        "muse-spark-1.2-contributor"
-    ];
-
-    const OPENCODE_GO_MESSAGE_MODELS = {
-        "claude-haiku-5-5": true,
-        "minimax-m3": true,
-        "minimax-m2.7": true,
-        "qwen3.8-max": true,
-        "qwen3.8-flash": true,
-        "qwen3.7-plus": true
-    };
-
-    const OPENCODE_GO_RESPONSE_MODELS = {
-        "grok-4.7": true,
-        "grok-4.6": true,
-        "gpt-6-luna": true,
-        "gpt-5.6-luna": true,
-        "muse-spark-1.3-contributor": true,
-        "muse-spark-1.2-contributor": true
-    };
-
     // One id for the life of this extension. Antinote has no per-note
     // conversation id, so the running instance is the conversation OpenCode
     // uses for routing and prompt caching.
     let opencodeSessionId = null;
 
-    const newSessionId = () => {
-        const bytes = [];
-        for (let i = 0; i < 16; i++) {
-            bytes.push(Math.floor(Math.random() * 256));
-        }
-        bytes[6] = (bytes[6] & 0x0f) | 0x40;
-        bytes[8] = (bytes[8] & 0x3f) | 0x80;
-        const hex = bytes.map((b) => (b < 16 ? "0" : "") + b.toString(16)).join("");
-        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-    };
-
     const opencodeSession = () => {
         if (!opencodeSessionId) {
-            opencodeSessionId = newSessionId();
+            opencodeSessionId = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
         }
         return opencodeSessionId;
-    };
-
-    const opencodeGoFormat = (model) => {
-        const id = (model || "").toLowerCase();
-        if (OPENCODE_GO_RESPONSE_MODELS[id]) {
-            return "responses";
-        }
-        if (OPENCODE_GO_MESSAGE_MODELS[id]) {
-            return "anthropic";
-        }
-        return "openai";
     };
 
     // Preferences read through the app bridge, guarded so this file also loads
@@ -199,7 +189,8 @@
             endpoints: [OPENCODE_GO_CHAT, OPENCODE_GO_MESSAGES, OPENCODE_GO_RESPONSES],
             apiKeyId: "apikey_opencodego",
             models: OPENCODE_GO_MODELS,
-            defaultModel: "glm-5.3-flash",
+            // NOTE If the model list fails to load then it's likely this model has been removed and we need a new default
+            defaultModel: "mimo-v2.6-flash",
             // Exact ids, not family prefixes: "gpt-" would keep a leftover
             // gpt-4o, and "claude" would keep a leftover Claude model.
             modelPrefixes: OPENCODE_GO_MODELS,

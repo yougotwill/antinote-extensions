@@ -38,7 +38,7 @@ This extension acts as a **service** - it has no user-facing commands. Instead, 
 
 1. Subscribe to Go or Go Plus in [OpenCode Console](https://opencode.ai/docs/go/) and copy the API key
 2. Save that key in Antinote as `apikey_opencodego`
-3. Set **AI Provider** to `opencodego`. Leave **Model** empty to use `glm-5.3-flash`, or pick another id from the list
+3. Set **AI Provider** to `opencodego`. Leave **Model** empty to use `mimo-v2.6-flash`, or pick another id from the list
 
 OpenCode Go sends each model to the endpoint that serves it (chat completions, Anthropic messages, or the OpenAI Responses API). Requests include a stable `x-opencode-session` header for the running Antinote session so OpenCode can route and cache them as one conversation.
 

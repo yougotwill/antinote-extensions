@@ -391,7 +391,7 @@ describe("AI Providers Extension - Request Building", function() {
     getAvailableModels = undefined;
     run({ provider: "opencodego", model: "gpt-4o" });
     expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/chat/completions");
-    expect(lastCall.body.model).toBe("glm-5.3-flash");
+    expect(lastCall.body.model).toBe("mimo-v2.6-flash");
   });
 
   it("uses chat completions for an OpenCode Go model the route map does not list", function() {
