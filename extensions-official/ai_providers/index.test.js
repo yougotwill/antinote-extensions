@@ -438,6 +438,29 @@ describe("AI Providers Extension - Request Building", function() {
     expect(lastCall.body.model).toBe("mimo-v2.6-flash");
   });
 
+  it("keeps every seeded OpenCode Go model when the catalog is unavailable", function() {
+    getAvailableModels = undefined;
+    var models = global.AI_PROVIDERS.opencodego.models;
+    var overlapping = ["glm-5.3", "glm-5.3-flash", "mimo-v2.5", "mimo-v2.5-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "hy3"];
+    overlapping.forEach(function(id) {
+      if (models.indexOf(id) === -1) {
+        throw new Error("Expected seed list to include " + id);
+      }
+    });
+    models.forEach(function(id) {
+      run({ provider: "opencodego", model: id });
+      expect(lastCall.body.model).toBe(id);
+    });
+  });
+
+  it("falls back when an OpenCode Go name only starts with a seeded id", function() {
+    getAvailableModels = undefined;
+    run({ provider: "opencodego", model: "hy3-preview" });
+    expect(lastCall.body.model).toBe("mimo-v2.6-flash");
+    run({ provider: "opencodego", model: "glm-5.3-extra" });
+    expect(lastCall.body.model).toBe("mimo-v2.6-flash");
+  });
+
   it("uses chat completions for an OpenCode Go model the route map does not list", function() {
     getAvailableModels = function() { return ["some-new-model"]; };
     run({ provider: "opencodego", model: "some-new-model" });

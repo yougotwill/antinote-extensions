@@ -189,9 +189,9 @@ const opencodeGoFormat = (model) => {
             models: OPENCODE_GO_MODELS,
             // NOTE If the model list fails to load then it's likely this model has been removed and we need a new default
             defaultModel: "mimo-v2.6-flash",
-            // Exact ids, not family prefixes: "gpt-" would keep a leftover
-            // gpt-4o, and "claude" would keep a leftover Claude model.
-            modelPrefixes: OPENCODE_GO_MODELS,
+            // No family prefix. Seed ids overlap each other and other
+            // providers, so resolveModel exact-matches `models` instead.
+            modelPrefixes: [],
             requiresApiKey: true
         },
         "ollama": {
@@ -377,8 +377,18 @@ const opencodeGoFormat = (model) => {
             return catalog.indexOf(model) !== -1 ? model : config.defaultModel;
         }
 
-        // No catalog: fall back to the naming conventions we know. Providers
-        // with no recognisable prefix keep whatever the user typed.
+        // No catalog. OpenCode Go has a closed seed list, matched in full:
+        // "glm-5.3" must not also accept "glm-5.3-flash", and "hy3" must not
+        // accept "hy3-preview". Family prefixes like "gpt-" or "claude" would
+        // keep a leftover model from another provider.
+        if (providerId === "opencodego") {
+            const known = config.models.some((id) => id.toLowerCase() === model.toLowerCase());
+            return known ? model : config.defaultModel;
+        }
+
+        // Other providers fall back to the naming conventions we know.
+        // An empty prefix list means there is no convention: keep whatever
+        // the user typed.
         if (config.modelPrefixes.length === 0) {
             return model;
         }
