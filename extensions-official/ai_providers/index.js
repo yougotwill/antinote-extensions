@@ -547,7 +547,7 @@ const opencodeGoFormat = (model) => {
                 };
             }
         } else if (format === "responses") {
-            // OpenAI Responses API (OpenCode Go models served that way).
+            // Responses API body. At present only OpenCode Go selects this format, via opencodeGoFormat.
             headers = {
                 "Content-Type": "application/json"
             };
