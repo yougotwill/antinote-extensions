@@ -187,7 +187,6 @@ const opencodeGoFormat = (model) => {
             endpoints: [OPENCODE_GO_CHAT, OPENCODE_GO_MESSAGES, OPENCODE_GO_RESPONSES],
             apiKeyId: "apikey_opencodego",
             models: OPENCODE_GO_MODELS,
-            // NOTE If the model list fails to load then it's likely this model has been removed and we need a new default
             defaultModel: "mimo-v2.6-flash",
             // No family prefix. Seed ids overlap each other and other
             // providers, so resolveModel exact-matches `models` instead.
