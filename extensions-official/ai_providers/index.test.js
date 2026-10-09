@@ -85,22 +85,26 @@ describe("AI Providers Extension - Metadata Validation", function() {
   it("should have endpoints array with all provider APIs", function() {
     expect(metadata.endpoints).toBeDefined();
     expect(metadata.endpoints).toBeArray();
-    expect(metadata.endpoints.length).toBeGreaterThanOrEqual(5);
+    expect(metadata.endpoints.length).toBeGreaterThanOrEqual(8);
     expect(metadata.endpoints[0]).toContain("api.openai.com");
     expect(metadata.endpoints[1]).toContain("api.anthropic.com");
     expect(metadata.endpoints[2]).toContain("generativelanguage.googleapis.com");
     expect(metadata.endpoints[3]).toContain("openrouter.ai");
     expect(metadata.endpoints[4]).toContain("localhost:11434");
+    expect(metadata.endpoints[5]).toContain("opencode.ai/zen/go/v1/chat/completions");
+    expect(metadata.endpoints[6]).toContain("opencode.ai/zen/go/v1/messages");
+    expect(metadata.endpoints[7]).toContain("opencode.ai/zen/go/v1/responses");
   });
 
   it("should require API keys for cloud providers", function() {
     expect(metadata.requiredAPIKeys).toBeDefined();
     expect(metadata.requiredAPIKeys).toBeArray();
-    expect(metadata.requiredAPIKeys.length).toBeGreaterThanOrEqual(4);
+    expect(metadata.requiredAPIKeys.length).toBeGreaterThanOrEqual(5);
     expect(metadata.requiredAPIKeys[0]).toBe("apikey_openai");
     expect(metadata.requiredAPIKeys[1]).toBe("apikey_anthropic");
     expect(metadata.requiredAPIKeys[2]).toBe("apikey_google");
     expect(metadata.requiredAPIKeys[3]).toBe("apikey_openrouter");
+    expect(metadata.requiredAPIKeys[4]).toBe("apikey_opencodego");
   });
 
   it("declares the custom endpoint key", function() {
@@ -239,6 +243,10 @@ describe("AI Providers Extension - Request Building", function() {
     run({ provider: "openai" });
     expect(lastCall.body.max_tokens).toBe(undefined);
     expect(lastCall.body.max_completion_tokens).toBe(undefined);
+
+    run({ provider: "opencodego", model: "mimo-v2.6-flash" });
+    expect(lastCall.body.max_tokens).toBe(undefined);
+    expect(lastCall.body.max_completion_tokens).toBe(undefined);
   });
 
   it("does not cap output tokens on Google", function() {
@@ -249,17 +257,41 @@ describe("AI Providers Extension - Request Building", function() {
   it("still sends the max_tokens Anthropic requires", function() {
     run({ provider: "anthropic" });
     expect(lastCall.body.max_tokens).toBe(8192);
+
+    run({ provider: "opencodego", model: "claude-haiku-5-5" });
+    expect(lastCall.body.max_tokens).toBe(8192);
   });
 
   it("asks for the response length in the system prompt", function() {
     run({ provider: "openai", responseLength: "brief" });
     expect(lastCall.body.messages[0].content).toContain("couple of sentences");
+
+    run({ provider: "opencodego", model: "mimo-v2.6-flash", responseLength: "brief" });
+    expect(lastCall.body.messages[0].content).toContain("couple of sentences");
+
+    run({ provider: "opencodego", model: "claude-haiku-5-5", responseLength: "brief" });
+    expect(lastCall.body.system).toContain("couple of sentences");
+
+    run({ provider: "opencodego", model: "grok-4.7", responseLength: "brief" });
+    expect(lastCall.body.instructions).toContain("couple of sentences");
   });
 
   it("turns an explicit token count into a word count in the prompt", function() {
     run({ provider: "openai" }, { maxTokens: 400 });
     expect(lastCall.body.messages[0].content).toContain("300 words");
     expect(lastCall.body.max_tokens).toBe(undefined);
+
+    run({ provider: "opencodego", model: "mimo-v2.6-flash" }, { maxTokens: 400 });
+    expect(lastCall.body.messages[0].content).toContain("300 words");
+    expect(lastCall.body.max_tokens).toBe(undefined);
+
+    run({ provider: "opencodego", model: "grok-4.7" }, { maxTokens: 400 });
+    expect(lastCall.body.instructions).toContain("300 words");
+    expect(lastCall.body.max_tokens).toBe(undefined);
+
+    run({ provider: "opencodego", model: "claude-haiku-5-5" }, { maxTokens: 400 });
+    expect(lastCall.body.system).toContain("300 words");
+    expect(lastCall.body.max_tokens).toBe(8192);
   });
 
   it("omits temperature everywhere unless a caller sets one", function() {
@@ -269,6 +301,12 @@ describe("AI Providers Extension - Request Building", function() {
     expect(lastCall.body.temperature).toBe(undefined);
     run({ provider: "google" });
     expect(lastCall.body.generationConfig.temperature).toBe(undefined);
+    run({ provider: "opencodego", model: "mimo-v2.6-flash" });
+    expect(lastCall.body.temperature).toBe(undefined);
+    run({ provider: "opencodego", model: "claude-haiku-5-5" });
+    expect(lastCall.body.temperature).toBe(undefined);
+    run({ provider: "opencodego", model: "grok-4.7" });
+    expect(lastCall.body.temperature).toBe(undefined);
   });
 
   it("passes through a temperature the caller set explicitly", function() {
@@ -276,6 +314,12 @@ describe("AI Providers Extension - Request Building", function() {
     expect(lastCall.body.temperature).toBe(1.2);
     run({ provider: "anthropic" }, { temperature: 0 });
     expect(lastCall.body.temperature).toBe(0);
+    run({ provider: "opencodego", model: "mimo-v2.6-flash" }, { temperature: 1.2 });
+    expect(lastCall.body.temperature).toBe(1.2);
+    run({ provider: "opencodego", model: "claude-haiku-5-5" }, { temperature: 0 });
+    expect(lastCall.body.temperature).toBe(0);
+    run({ provider: "opencodego", model: "grok-4.7" }, { temperature: 0.4 });
+    expect(lastCall.body.temperature).toBe(0.4);
   });
 
   it("sends custom-endpoint requests to the saved URL with Bearer auth", function() {
@@ -407,6 +451,12 @@ describe("AI Providers Extension - Request Building", function() {
     var result = run({ provider: "google" });
     expect(result.status).toBe("error");
     expect(result.message).toContain("ran out of room");
+
+    mockResponse = { choices: [{ finish_reason: "length", message: { content: "" } }] };
+    result = run({ provider: "opencodego", model: "mimo-v2.6-flash" });
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("OpenCode Go");
+    expect(result.message).toContain("ran out of room");
     mockResponse = okResponse;
   });
 
@@ -420,6 +470,10 @@ describe("AI Providers Extension - Request Building", function() {
       };
     };
     var result = run({ provider: "google" });
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("API key not valid");
+
+    result = run({ provider: "opencodego", model: "mimo-v2.6-flash" });
     expect(result.status).toBe("error");
     expect(result.message).toContain("API key not valid");
   });
