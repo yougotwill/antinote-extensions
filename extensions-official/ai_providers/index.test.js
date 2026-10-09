@@ -334,18 +334,18 @@ describe("AI Providers Extension - Request Building", function() {
   });
 
   it("sends OpenCode Go chat models to chat completions with a stable session", function() {
-    var result = run({ provider: "opencodego", model: "glm-5.3-flash" });
+    var result = run({ provider: "opencodego", model: "mimo-v2.6-flash" });
     expect(result.status).toBe("success");
     expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/chat/completions");
     expect(lastCall.headers["Authorization"]).toBe("Bearer {{API_KEY}}");
     expect(lastCall.apiKeyId).toBe("apikey_opencodego");
-    expect(lastCall.headers["User-Agent"]).toBe("antinote/1.3.0");
+    expect(lastCall.headers["User-Agent"]).toBe("@antinote/ai_providers/1.3.0");
     expect(lastCall.headers["x-opencode-session"]).toBeDefined();
-    expect(lastCall.body.model).toBe("glm-5.3-flash");
+    expect(lastCall.body.model).toBe("mimo-v2.6-flash");
     expect(lastCall.body.messages[1].content).toBe("Say hi");
 
     var session = lastCall.headers["x-opencode-session"];
-    run({ provider: "opencodego", model: "glm-5.3-flash" });
+    run({ provider: "opencodego", model: "mimo-v2.6-flash" });
     expect(lastCall.headers["x-opencode-session"]).toBe(session);
   });
 
