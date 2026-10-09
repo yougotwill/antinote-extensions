@@ -107,6 +107,13 @@ describe("AI Providers Extension - Metadata Validation", function() {
     expect(metadata.requiredAPIKeys).toContain("apikey_custom");
   });
 
+  it("declares OpenCode Go endpoints and its API key", function() {
+    expect(metadata.endpoints).toContain("https://opencode.ai/zen/go/v1/chat/completions");
+    expect(metadata.endpoints).toContain("https://opencode.ai/zen/go/v1/messages");
+    expect(metadata.endpoints).toContain("https://opencode.ai/zen/go/v1/responses");
+    expect(metadata.requiredAPIKeys).toContain("apikey_opencodego");
+  });
+
   it("should have no commands (service only)", function() {
     expect(metadata.commands).toBeDefined();
     expect(metadata.commands).toBeArray();
@@ -324,6 +331,75 @@ describe("AI Providers Extension - Request Building", function() {
     callAPI = goodCallAPI;
     expect(result.status).toBe("error");
     expect(result.message).toContain("Reload extensions");
+  });
+
+  it("sends OpenCode Go chat models to chat completions with a stable session", function() {
+    var result = run({ provider: "opencodego", model: "glm-5.3-flash" });
+    expect(result.status).toBe("success");
+    expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/chat/completions");
+    expect(lastCall.headers["Authorization"]).toBe("Bearer {{API_KEY}}");
+    expect(lastCall.apiKeyId).toBe("apikey_opencodego");
+    expect(lastCall.headers["User-Agent"]).toBe("antinote/1.3.0");
+    expect(lastCall.headers["x-opencode-session"]).toBeDefined();
+    expect(lastCall.body.model).toBe("glm-5.3-flash");
+    expect(lastCall.body.messages[1].content).toBe("Say hi");
+
+    var session = lastCall.headers["x-opencode-session"];
+    run({ provider: "opencodego", model: "glm-5.3-flash" });
+    expect(lastCall.headers["x-opencode-session"]).toBe(session);
+  });
+
+  it("sends OpenCode Go response models to the responses API", function() {
+    mockResponse = { output_text: "from responses" };
+    var result = run({ provider: "opencodego", model: "grok-4.7" });
+    expect(result.status).toBe("success");
+    expect(result.payload).toBe("from responses");
+    expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/responses");
+    expect(lastCall.headers["Authorization"]).toBe("Bearer {{API_KEY}}");
+    expect(lastCall.body.model).toBe("grok-4.7");
+    expect(lastCall.body.input).toBe("Say hi");
+    expect(lastCall.body.instructions).toContain("plaintext scratch notes app");
+    expect(lastCall.body.messages).toBe(undefined);
+    mockResponse = okResponse;
+  });
+
+  it("reads OpenCode Go responses from output content blocks", function() {
+    mockResponse = {
+      output: [
+        { type: "message", content: [{ type: "output_text", text: "from blocks" }] }
+      ]
+    };
+    var result = run({ provider: "opencodego", model: "grok-4.7" });
+    expect(result.status).toBe("success");
+    expect(result.payload).toBe("from blocks");
+    mockResponse = okResponse;
+  });
+
+  it("sends OpenCode Go message models to the Anthropic messages API", function() {
+    var result = run({ provider: "opencodego", model: "claude-haiku-5-5" });
+    expect(result.status).toBe("success");
+    expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/messages");
+    expect(lastCall.headers["x-api-key"]).toBe("{{API_KEY}}");
+    expect(lastCall.headers["anthropic-version"]).toBe("2023-06-01");
+    expect(lastCall.apiKeyId).toBe("apikey_opencodego");
+    expect(lastCall.body.max_tokens).toBe(8192);
+    expect(lastCall.body.model).toBe("claude-haiku-5-5");
+    expect(lastCall.headers["x-opencode-session"]).toBeDefined();
+  });
+
+  it("falls back to the OpenCode Go default when the model belongs to another provider", function() {
+    getAvailableModels = undefined;
+    run({ provider: "opencodego", model: "gpt-4o" });
+    expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/chat/completions");
+    expect(lastCall.body.model).toBe("glm-5.3-flash");
+  });
+
+  it("uses chat completions for an OpenCode Go model the route map does not list", function() {
+    getAvailableModels = function() { return ["some-new-model"]; };
+    run({ provider: "opencodego", model: "some-new-model" });
+    expect(lastCall.url).toBe("https://opencode.ai/zen/go/v1/chat/completions");
+    expect(lastCall.body.model).toBe("some-new-model");
+    getAvailableModels = undefined;
   });
 
   it("explains a 200 that came back with no answer", function() {

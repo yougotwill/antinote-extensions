@@ -10,6 +10,7 @@
 // - Anthropic (Claude models)
 // - Google AI (Gemini models)
 // - OpenRouter (unified access to multiple providers)
+// - OpenCode Go (curated models; chat, messages, or responses by model)
 // - Ollama (local models)
 // - Custom (any OpenAI- or Anthropic-compatible endpoint: Azure OpenAI,
 //   LiteLLM, vLLM, a Bedrock gateway, ...)
@@ -28,6 +29,102 @@
     // (Gemini 2.5, o-series) a small cap is spent thinking and the reply comes
     // back empty. Only Anthropic needs a number, because its API requires one.
     const ANTHROPIC_MAX_TOKENS = 8192;
+
+    // OpenCode Go serves one key across three APIs. The model id picks the URL.
+    // https://opencode.ai/docs/go/
+    const OPENCODE_GO_CHAT = "https://opencode.ai/zen/go/v1/chat/completions";
+    const OPENCODE_GO_MESSAGES = "https://opencode.ai/zen/go/v1/messages";
+    const OPENCODE_GO_RESPONSES = "https://opencode.ai/zen/go/v1/responses";
+    const OPENCODE_GO_USER_AGENT = "antinote/1.3.0";
+
+    // Chat-completions models. Anything not listed in the other two maps uses
+    // this endpoint, including models the live catalog adds later.
+    const OPENCODE_GO_MODELS = [
+        "glm-5.3-flash",
+        "glm-5.3",
+        "glm-5.2",
+        "kimi-k3",
+        "kimi-k2.7-code",
+        "kimi-k2.6",
+        "longcat-2.0",
+        "longcat-2.5-preview-free",
+        "step-5-preview-free",
+        "deepseek-v4.1-flash",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp",
+        "mimo-v2.6-flash",
+        "mimo-v2.6-pro",
+        "mimo-v2.5",
+        "mimo-v2.5-pro",
+        "hy4-preview",
+        "hy3",
+        "space-bunny",
+        "claude-haiku-5-5",
+        "minimax-m3",
+        "minimax-m2.7",
+        "qwen3.8-max",
+        "qwen3.8-flash",
+        "qwen3.7-plus",
+        "grok-4.7",
+        "grok-4.6",
+        "gpt-6-luna",
+        "gpt-5.6-luna",
+        "muse-spark-1.3-contributor",
+        "muse-spark-1.2-contributor"
+    ];
+
+    const OPENCODE_GO_MESSAGE_MODELS = {
+        "claude-haiku-5-5": true,
+        "minimax-m3": true,
+        "minimax-m2.7": true,
+        "qwen3.8-max": true,
+        "qwen3.8-flash": true,
+        "qwen3.7-plus": true
+    };
+
+    const OPENCODE_GO_RESPONSE_MODELS = {
+        "grok-4.7": true,
+        "grok-4.6": true,
+        "gpt-6-luna": true,
+        "gpt-5.6-luna": true,
+        "muse-spark-1.3-contributor": true,
+        "muse-spark-1.2-contributor": true
+    };
+
+    // One id for the life of this extension. Antinote has no per-note
+    // conversation id, so the running instance is the conversation OpenCode
+    // uses for routing and prompt caching.
+    let opencodeSessionId = null;
+
+    const newSessionId = () => {
+        const bytes = [];
+        for (let i = 0; i < 16; i++) {
+            bytes.push(Math.floor(Math.random() * 256));
+        }
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = bytes.map((b) => (b < 16 ? "0" : "") + b.toString(16)).join("");
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    };
+
+    const opencodeSession = () => {
+        if (!opencodeSessionId) {
+            opencodeSessionId = newSessionId();
+        }
+        return opencodeSessionId;
+    };
+
+    const opencodeGoFormat = (model) => {
+        const id = (model || "").toLowerCase();
+        if (OPENCODE_GO_RESPONSE_MODELS[id]) {
+            return "responses";
+        }
+        if (OPENCODE_GO_MESSAGE_MODELS[id]) {
+            return "anthropic";
+        }
+        return "openai";
+    };
 
     // Preferences read through the app bridge, guarded so this file also loads
     // where the bridge isn't installed yet (the Node test harness).
@@ -93,6 +190,21 @@
             modelPrefixes: [],
             requiresApiKey: true
         },
+        "opencodego": {
+            name: "OpenCode Go",
+            endpoint: OPENCODE_GO_CHAT,
+            // The allow-list is prefix-matched, and this provider calls three
+            // URLs. `endpoint` stays the chat URL for anything that reads a
+            // single address; `endpoints` is what gets declared.
+            endpoints: [OPENCODE_GO_CHAT, OPENCODE_GO_MESSAGES, OPENCODE_GO_RESPONSES],
+            apiKeyId: "apikey_opencodego",
+            models: OPENCODE_GO_MODELS,
+            defaultModel: "glm-5.3-flash",
+            // Exact ids, not family prefixes: "gpt-" would keep a leftover
+            // gpt-4o, and "claude" would keep a leftover Claude model.
+            modelPrefixes: OPENCODE_GO_MODELS,
+            requiresApiKey: true
+        },
         "ollama": {
             name: "Ollama (Local)",
             endpoint: "http://localhost:11434/v1/chat/completions",
@@ -130,9 +242,15 @@
     for (const providerId in PROVIDERS) {
         const provider = PROVIDERS[providerId];
         // Never declare an empty endpoint: the app's allow-list does prefix
-        // matching, and "" would authorize every URL.
-        if (provider.endpoint) {
-            allEndpoints.push(provider.endpoint);
+        // matching, and "" would authorize every URL. A provider that calls
+        // more than one URL lists them in `endpoints`.
+        const urls = (provider.endpoints && provider.endpoints.length > 0)
+            ? provider.endpoints
+            : (provider.endpoint ? [provider.endpoint] : []);
+        for (let i = 0; i < urls.length; i++) {
+            if (urls[i]) {
+                allEndpoints.push(urls[i]);
+            }
         }
         if (provider.requiresApiKey && provider.apiKeyId) {
             allApiKeys.push(provider.apiKeyId);
@@ -149,7 +267,7 @@
 
     const extensionRoot = new Extension({
         name: extensionName,
-        version: "1.2.0",
+        version: "1.3.0",
         endpoints: allEndpoints,
         requiredAPIKeys: allApiKeys,
         author: "johnsonfung",
@@ -165,7 +283,7 @@
     label: "AI Provider",
     type: "selectOne",
     defaultValue: "openai",
-    options: ["openai", "anthropic", "google", "openrouter", "ollama", "custom"],
+    options: ["openai", "anthropic", "google", "openrouter", "opencodego", "ollama", "custom"],
     helpText: "Default AI provider for all AI-powered extensions"
   });
     extensionRoot.register_preference(providerPref);
@@ -283,9 +401,12 @@
 
     // Which wire protocol a provider speaks. The custom endpoint borrows one
     // of the shapes we already build rather than inventing a third.
-    const wireFormat = (providerId) => {
+    const wireFormat = (providerId, model) => {
         if (providerId === "custom") {
             return readPreference("customFormat") === "anthropic" ? "anthropic" : "openai";
+        }
+        if (providerId === "opencodego") {
+            return opencodeGoFormat(model);
         }
         if (providerId === "openai" || providerId === "openrouter" || providerId === "ollama") {
             return "openai";
@@ -316,7 +437,7 @@
             return null;
         }
 
-        const format = wireFormat(providerId);
+        const format = wireFormat(providerId, model);
         let url = config.endpoint;
         let headers = {};
         let body = {};
@@ -324,9 +445,11 @@
 
         // How the key travels: Anthropic's own API wants x-api-key, Google its
         // own header, the custom endpoint follows its auth preference, and
-        // everyone else uses a Bearer token. Ollama sends nothing.
+        // everyone else uses a Bearer token. Ollama sends nothing. OpenCode
+        // Go's messages models follow the Anthropic SDK; its other models
+        // follow the OpenAI SDK.
         let authStyle = "bearer";
-        if (providerId === "anthropic") {
+        if (providerId === "anthropic" || (providerId === "opencodego" && format === "anthropic")) {
             authStyle = "x-api-key";
         } else if (providerId === "google") {
             authStyle = "x-goog-api-key";
@@ -336,6 +459,16 @@
             const authPref = readPreference("customAuth");
             authStyle = (authPref === "x-api-key" || authPref === "none") ? authPref : "bearer";
             url = customEndpointNow();
+        }
+
+        if (providerId === "opencodego") {
+            if (format === "responses") {
+                url = OPENCODE_GO_RESPONSES;
+            } else if (format === "anthropic") {
+                url = OPENCODE_GO_MESSAGES;
+            } else {
+                url = OPENCODE_GO_CHAT;
+            }
         }
         if (authStyle === "none") {
             apiKeyId = null;
@@ -422,6 +555,17 @@
                     ]
                 };
             }
+        } else if (format === "responses") {
+            // OpenAI Responses API (OpenCode Go models served that way).
+            headers = {
+                "Content-Type": "application/json"
+            };
+
+            body = {
+                model,
+                instructions: systemPrompt,
+                input: userPrompt
+            };
         }
 
         if (authStyle === "bearer") {
@@ -430,6 +574,13 @@
             headers["x-api-key"] = "{{API_KEY}}";
         } else if (authStyle === "x-goog-api-key") {
             headers["x-goog-api-key"] = "{{API_KEY}}";
+        }
+
+        // OpenCode uses the session id to keep routing and prompt caching
+        // attached to one conversation, and rejects generic client names.
+        if (providerId === "opencodego") {
+            headers["x-opencode-session"] = opencodeSession();
+            headers["User-Agent"] = OPENCODE_GO_USER_AGENT;
         }
 
         // Only send a temperature the caller actually asked for (see above).
@@ -451,9 +602,9 @@
     };
 
     // Helper function to parse response from different providers
-    const parseResponse = (providerId, responseData) => {
+    const parseResponse = (providerId, responseData, model) => {
         try {
-            const format = wireFormat(providerId);
+            const format = wireFormat(providerId, model);
             if (format === "openai") {
                 if (responseData.choices?.length > 0) {
                     return (responseData.choices[0].message?.content || "").trim() || null;
@@ -466,6 +617,21 @@
                         .join("")
                         .trim() || null;
                 }
+            } else if (format === "responses") {
+                if (typeof responseData.output_text === "string" && responseData.output_text.trim()) {
+                    return responseData.output_text.trim();
+                }
+                const output = responseData.output || [];
+                const texts = [];
+                for (let i = 0; i < output.length; i++) {
+                    const content = output[i].content || [];
+                    for (let j = 0; j < content.length; j++) {
+                        if (content[j].type === "output_text" && content[j].text) {
+                            texts.push(content[j].text);
+                        }
+                    }
+                }
+                return texts.join("").trim() || null;
             } else if (format === "google") {
                 if (responseData.candidates?.length > 0) {
                     const candidate = responseData.candidates[0];
@@ -514,7 +680,7 @@
     // Parameters:
     //   prompt (string): The user's prompt
     //   options (object, optional): Override default settings
-    //     - provider: Provider ID ("openai", "anthropic", "google", "openrouter", "ollama", "custom")
+    //     - provider: Provider ID ("openai", "anthropic", "google", "openrouter", "opencodego", "ollama", "custom")
     //     - model: Model name
     //     - systemPrompt: System prompt
     //     - maxTokens: Rough length hint in tokens (0 = use the length preference)
@@ -630,7 +796,7 @@
             }
 
             // Extract response text based on provider
-            const responseText = parseResponse(provider, responseData);
+            const responseText = parseResponse(provider, responseData, model);
 
             if (!responseText) {
                 return new ReturnObject({status: "error", message: describeEmptyResponse(provider, responseData)});

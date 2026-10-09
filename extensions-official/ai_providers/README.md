@@ -18,12 +18,13 @@ This extension acts as a **service** - it has no user-facing commands. Instead, 
 - **Anthropic** - Claude models (claude-sonnet-5, etc.)
 - **Google AI** - Gemini models (gemini-2.5-flash, etc.)
 - **OpenRouter** - Unified access to multiple providers
+- **OpenCode Go** - Curated models from [OpenCode Go](https://opencode.ai/docs/go/) (GLM, Kimi, DeepSeek, Grok, and others)
 - **Ollama** - Local models (llama3.3, mistral, etc.)
 - **Custom Endpoint** - Any OpenAI- or Anthropic-compatible endpoint (Azure OpenAI, LiteLLM, Amazon Bedrock behind a gateway, self-hosted vLLM, ...)
 
 ## Setup Instructions
 
-### For Cloud Providers (OpenAI, Anthropic, Google, OpenRouter)
+### For Cloud Providers (OpenAI, Anthropic, Google, OpenRouter, OpenCode Go)
 
 1. Go to **Preferences > API Keys** in Antinote
 2. Add API key(s) for your chosen provider(s):
@@ -31,6 +32,15 @@ This extension acts as a **service** - it has no user-facing commands. Instead, 
    - **Anthropic**: Keychain Key `apikey_anthropic`
    - **Google AI**: Keychain Key `apikey_google`
    - **OpenRouter**: Keychain Key `apikey_openrouter`
+   - **OpenCode Go**: Keychain Key `apikey_opencodego`
+
+### For OpenCode Go
+
+1. Subscribe to Go or Go Plus in [OpenCode Console](https://opencode.ai/docs/go/) and copy the API key
+2. Save that key in Antinote as `apikey_opencodego`
+3. Set **AI Provider** to `opencodego`. Leave **Model** empty to use `glm-5.3-flash`, or pick another id from the list
+
+OpenCode Go sends each model to the endpoint that serves it (chat completions, Anthropic messages, or the OpenAI Responses API). Requests include a stable `x-opencode-session` header for the running Antinote session so OpenCode can route and cache them as one conversation.
 
 ### For Ollama (Local Models)
 
@@ -127,7 +137,7 @@ var result = callAIProvider("Translate to Spanish: Hello", {
 **Parameters:**
 - `prompt` (string, required): The user's prompt/question
 - `options` (object, optional): Override default settings
-  - `provider` (string): Provider ID - "openai", "anthropic", "google", "openrouter", "ollama"
+  - `provider` (string): Provider ID - "openai", "anthropic", "google", "openrouter", "opencodego", "ollama", "custom"
   - `model` (string): Model name
   - `systemPrompt` (string): System prompt for the AI
   - `maxTokens` (number): Rough length hint in tokens, turned into a word count in
@@ -212,7 +222,7 @@ translate.execute = function(payload) {
 
 ## Version
 
-1.2.0
+1.3.0
 
 ## Author
 
