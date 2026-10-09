@@ -138,7 +138,7 @@ const opencodeGoFormat = (model) => {
     const PROVIDERS = {
         "openai": {
             name: "OpenAI",
-            endpoint: "https://api.openai.com/v1/chat/completions",
+            endpoints: ["https://api.openai.com/v1/chat/completions"],
             apiKeyId: "apikey_openai",
             models: ["gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"],
             defaultModel: "gpt-5",
@@ -147,7 +147,7 @@ const opencodeGoFormat = (model) => {
         },
         "anthropic": {
             name: "Anthropic",
-            endpoint: "https://api.anthropic.com/v1/messages",
+            endpoints: ["https://api.anthropic.com/v1/messages"],
             apiKeyId: "apikey_anthropic",
             models: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"],
             defaultModel: "claude-sonnet-5",
@@ -156,7 +156,7 @@ const opencodeGoFormat = (model) => {
         },
         "google": {
             name: "Google AI",
-            endpoint: "https://generativelanguage.googleapis.com/v1beta/models/",
+            endpoints: ["https://generativelanguage.googleapis.com/v1beta/models/"],
             apiKeyId: "apikey_google",
             models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
             defaultModel: "gemini-2.5-flash",
@@ -165,7 +165,7 @@ const opencodeGoFormat = (model) => {
         },
         "openrouter": {
             name: "OpenRouter",
-            endpoint: "https://openrouter.ai/api/v1/chat/completions",
+            endpoints: ["https://openrouter.ai/api/v1/chat/completions"],
             apiKeyId: "apikey_openrouter",
             models: [
                 "openrouter/auto",
@@ -182,10 +182,8 @@ const opencodeGoFormat = (model) => {
         },
         "opencodego": {
             name: "OpenCode Go",
-            endpoint: OPENCODE_GO_CHAT,
-            // The allow-list is prefix-matched, and this provider calls three
-            // URLs. `endpoint` stays the chat URL for anything that reads a
-            // single address; `endpoints` is what gets declared.
+            // First entry is the chat URL requests use. messages and responses
+            // are extra calls.
             endpoints: [OPENCODE_GO_CHAT, OPENCODE_GO_MESSAGES, OPENCODE_GO_RESPONSES],
             apiKeyId: "apikey_opencodego",
             models: OPENCODE_GO_MODELS,
@@ -198,7 +196,7 @@ const opencodeGoFormat = (model) => {
         },
         "ollama": {
             name: "Ollama (Local)",
-            endpoint: "http://localhost:11434/v1/chat/completions",
+            endpoints: ["http://localhost:11434/v1/chat/completions"],
             apiKeyId: null,
             models: ["llama3.3", "qwen2.5:32b", "mistral", "phi4", "deepseek-r1:32b"],
             defaultModel: "llama3.3",
@@ -209,7 +207,7 @@ const opencodeGoFormat = (model) => {
             name: "Custom Endpoint",
             // The real URL lives in the customEndpoint preference: read at call
             // time for requests, declared to the app at load time (below).
-            endpoint: "",
+            endpoints: [],
             apiKeyId: "apikey_custom",
             models: [],
             // No default: only the user knows what their endpoint serves.
@@ -232,14 +230,12 @@ const opencodeGoFormat = (model) => {
     const allApiKeys = [];
     for (const providerId in PROVIDERS) {
         const provider = PROVIDERS[providerId];
-        // Never declare an empty endpoint: the app's allow-list does prefix
-        // matching, and "" would authorize every URL. A provider that calls
-        // more than one URL lists them in `endpoints`.
-        const urls = (provider.endpoints && provider.endpoints.length > 0)
-            ? provider.endpoints
-            : (provider.endpoint ? [provider.endpoint] : []);
+        // Never declare an empty URL: the app's allow-list does prefix
+        // matching, and "" would authorize every URL. endpoints[0] is the
+        // chat target; later entries are extra calls.
+        const urls = provider.endpoints || [];
         for (let i = 0; i < urls.length; i++) {
-            if (urls[i]) {
+            if (urls[i] && allEndpoints.indexOf(urls[i]) === -1) {
                 allEndpoints.push(urls[i]);
             }
         }
@@ -429,7 +425,10 @@ const opencodeGoFormat = (model) => {
         }
 
         const format = wireFormat(providerId, model);
-        let url = config.endpoint;
+        // endpoints[0] is the former `endpoint`: chat/completions, Anthropic
+        // messages, or the Google models prefix. OpenCode Go overrides this
+        // per model below.
+        let url = (config.endpoints && config.endpoints[0]) || "";
         let headers = {};
         let body = {};
         let apiKeyId = config.apiKeyId;
@@ -515,7 +514,7 @@ const opencodeGoFormat = (model) => {
             // string: Antinote only substitutes {{API_KEY}} into headers and
             // the body, so a key in the URL would be sent as the literal
             // placeholder.
-            url = `${config.endpoint}${model}:generateContent`;
+            url = `${(config.endpoints && config.endpoints[0]) || ""}${model}:generateContent`;
             headers = {
                 "Content-Type": "application/json"
             };
